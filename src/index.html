@@ -1,22 +1,1624 @@
 <!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <link rel="stylesheet" href="styles.css" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>PakePlus App</title>
-        <script type="module" src="/main.js" defer></script>
-    </head>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI智能番茄时钟完整版 | Comprehensive AI-Powered Pomodoro Timer</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .pulse-ring {
+            animation: pulse-ring 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 1; }
+            100% { transform: scale(1.2); opacity: 0; }
+        }
+        .slide-up {
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .ai-thinking {
+            animation: thinking 1.5s ease-in-out infinite;
+        }
+        @keyframes thinking {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+        .drag-handle {
+            cursor: grab;
+        }
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+        .sortable-ghost {
+            opacity: 0.4;
+        }
+        .task-card {
+            transition: all 0.3s ease;
+        }
+        .task-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        .ai-suggestion {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+        @keyframes glow {
+            from { box-shadow: 0 0 20px rgba(102, 126, 234, 0.3); }
+            to { box-shadow: 0 0 30px rgba(118, 75, 162, 0.4); }
+        }
+        .priority-high { border-left: 4px solid #ef4444; }
+        .priority-medium { border-left: 4px solid #f59e0b; }
+        .priority-low { border-left: 4px solid #10b981; }
+        .category-work { background: linear-gradient(45deg, #fee2e2, #fef3c7); }
+        .category-personal { background: linear-gradient(45deg, #dbeafe, #e0f2fe); }
+        .category-learning { background: linear-gradient(45deg, #f3e8ff, #fdf4ff); }
+        .category-health { background: linear-gradient(45deg, #dcfce7, #f0fdf4); }
+        .time-block {
+            transition: all 0.3s ease;
+            border-radius: 8px;
+            margin: 2px 0;
+        }
+        .time-block-work {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+            color: white;
+        }
+        .time-block-break {
+            background: linear-gradient(90deg, #10b981, #059669);
+            color: white;
+        }
+        .collaboration-indicator {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .notification {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 min-h-screen">
+    <!-- 导入AI服务和数据持久化模块 -->
+    <script src="ai-task-service.js"></script>
+    <script src="data-persistence.js"></script>
+    
+    <div id="root"></div>
 
-    <body>
-        <main class="container">
-            <h1>Welcome to PakePlus</h1>
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
 
-            <form class="row" id="greet-form">
-                <input id="greet-input" placeholder="Enter a name..." />
-                <button type="submit">Greet</button>
-            </form>
-            <p id="greet-msg"></p>
-        </main>
-    </body>
+        // 自定义Input组件解决中文输入问题
+        const Input = (props) => {
+          const inputRef = useRef(null);
+          const { value, onChange, ...restProps } = props;
+          
+          // 直接操作DOM设置值
+          const forceSetValue = () => {
+            if (inputRef.current) {
+              inputRef.current.value = value;
+              inputRef.current.setAttribute('value', value);
+            }
+          };
+          
+          return (
+            <input
+              {...restProps}
+              defaultValue={value}
+              ref={(el) => {
+                if (el) {
+                  inputRef.current = el;
+                  forceSetValue();
+                }
+              }}
+              onFocus={(e) => {
+                setTimeout(forceSetValue, 10);
+                props.onFocus && props.onFocus(e);
+              }}
+              onBlur={(e) => {
+                setTimeout(forceSetValue, 150);
+                props.onBlur && props.onBlur(e);
+              }}
+              onChange={(e) => {
+                onChange && onChange(e.target.value);
+              }}
+            />
+          );
+        };
+
+        // 完整的AI番茄钟应用
+        const ComprehensiveAIPomodoro = () => {
+            // 核心计时器状态
+            const [timeLeft, setTimeLeft] = useState(25 * 60);
+            const [isActive, setIsActive] = useState(false);
+            const [sessionType, setSessionType] = useState('work');
+            const [sessionCount, setSessionCount] = useState(0);
+            const [totalSessions, setTotalSessions] = useState(0);
+
+            // 任务管理状态
+            const [tasks, setTasks] = useState([]);
+            const [currentTask, setCurrentTask] = useState(null);
+            const [newTaskText, setNewTaskText] = useState('');
+            const [priority, setPriority] = useState('medium');
+            const [estimatedPomodoros, setEstimatedPomodoros] = useState(1);
+            const [startTime, setStartTime] = useState('');
+            const [endTime, setEndTime] = useState('');
+            
+            // 计算预计结束时间（修正时区问题）
+            useEffect(() => {
+              if (startTime && estimatedPomodoros > 0) {
+                // 解析输入时间为本地时间
+                const start = new Date(startTime);
+                
+                // 计算总分钟数（每个番茄钟=25分钟工作+5分钟休息）
+                const totalMinutes = estimatedPomodoros * 30;
+                
+                // 计算结束时间（本地时间）
+                const endDate = new Date(start.getTime() + totalMinutes * 60000);
+                
+                // 格式化为本地时间字符串 (YYYY-MM-DDTHH:MM)
+                const year = endDate.getFullYear();
+                const month = String(endDate.getMonth() + 1).padStart(2, '0');
+                const day = String(endDate.getDate()).padStart(2, '0');
+                const hours = String(endDate.getHours()).padStart(2, '0');
+                const minutes = String(endDate.getMinutes()).padStart(2, '0');
+                
+                setEndTime(`${year}-${month}-${day}T${hours}:${minutes}`);
+              } else {
+                setEndTime('');
+              }
+            }, [startTime, estimatedPomodoros]);
+            
+            // UI状态
+            const [showTaskManager, setShowTaskManager] = useState(false);
+            const [showAIChat, setShowAIChat] = useState(false);
+            const [showAnalytics, setShowAnalytics] = useState(false);
+            const [showSettings, setShowSettings] = useState(false);
+            const [showTimeBlocks, setShowTimeBlocks] = useState(false);
+            const [showCollaboration, setShowCollaboration] = useState(false);
+            
+            // 输入法状态
+            const [isTaskComposing, setIsTaskComposing] = useState(false);
+            const [isChatComposing, setIsChatComposing] = useState(false);
+
+            // AI功能状态
+            const [aiService] = useState(() => new AITaskService());
+            const [dataManager] = useState(() => new DataPersistenceManager({
+                autoSaveInterval: 30000,
+                maxBackups: 5,
+                syncEnabled: true
+            }));
+            const [isAIProcessing, setIsAIProcessing] = useState(false);
+            const [aiSuggestions, setAISuggestions] = useState([]);
+            const [chatInput, setChatInput] = useState('');
+            const [chatHistory, setChatHistory] = useState([]);
+            
+            // 高级功能状态
+            const [timeBlocks, setTimeBlocks] = useState([]);
+            const [workloadAnalysis, setWorkloadAnalysis] = useState(null);
+            const [riskAssessment, setRiskAssessment] = useState([]);
+            const [learningInsights, setLearningInsights] = useState(null);
+            const [userPreferences, setUserPreferences] = useState({
+                energyLevel: 'medium',
+                preferredWorkTime: 'morning',
+                workStyle: 'focused',
+                notifications: true,
+                sounds: true,
+                darkMode: false
+            });
+
+            // 协作功能状态
+            const [collaborationEnabled, setCollaborationEnabled] = useState(false);
+            const [activeUsers, setActiveUsers] = useState([]);
+            const [sharedSessions, setSharedSessions] = useState([]);
+
+            // 分析数据状态
+            const [completionHistory, setCompletionHistory] = useState([]);
+            const [productivityMetrics, setProductivityMetrics] = useState({});
+            const [notifications, setNotifications] = useState([]);
+
+            const intervalRef = useRef(null);
+            const chartRef = useRef(null);
+            const dragContainerRef = useRef(null);
+
+            // 会话配置
+            const sessionTimes = {
+                work: 25 * 60,
+                shortBreak: 5 * 60,
+                longBreak: 15 * 60
+            };
+
+            const sessionNames = {
+                work: '专注工作',
+                shortBreak: '短休息',
+                longBreak: '长休息'
+            };
+
+            const sessionColors = {
+                work: 'from-indigo-500 to-purple-600',
+                shortBreak: 'from-green-500 to-emerald-500',
+                longBreak: 'from-blue-500 to-cyan-500'
+            };
+
+            // 工具函数
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            };
+
+            const getProgress = () => {
+                const total = sessionTimes[sessionType];
+                return ((total - timeLeft) / total) * 100;
+            };
+
+            const generateTaskId = () => `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+            const addNotification = (message, type = 'info') => {
+                const notification = {
+                    id: Date.now(),
+                    message,
+                    type,
+                    timestamp: new Date(),
+                    read: false
+                };
+                
+                setNotifications(prev => [notification, ...prev.slice(0, 9)]); // 保留最新10条
+                
+                // 3秒后自动移除
+                setTimeout(() => {
+                    setNotifications(prev => prev.filter(n => n.id !== notification.id));
+                }, 3000);
+            };
+
+            // AI分析功能
+            const analyzeTasksWithAI = useCallback(async () => {
+                if (tasks.length === 0) return;
+
+                setIsAIProcessing(true);
+                addNotification('🤖 AI正在分析您的任务安排...', 'info');
+                
+                try {
+                    const userContext = {
+                        ...userPreferences,
+                        currentTime: new Date().toISOString(),
+                        completionHistory,
+                        productivityMetrics
+                    };
+
+                    const result = await aiService.analyzeTasksWithAI(tasks, userContext);
+                    
+                    if (result.success) {
+                        const data = result.data;
+                        
+                        setAISuggestions(data.suggestions || []);
+                        setTimeBlocks(data.timeBlocks || []);
+                        setWorkloadAnalysis(data.workloadAnalysis);
+                        setRiskAssessment(data.riskAssessment || []);
+                        setLearningInsights(data.learningInsights);
+
+                        // 如果有优化的任务顺序，询问用户是否应用
+                        if (data.optimizedOrder && data.optimizedOrder.length > 0) {
+                            setChatHistory(prev => [...prev, {
+                                type: 'assistant',
+                                message: `✨ AI分析完成！发现${data.suggestions?.length || 0}个优化建议。是否应用AI推荐的任务顺序？`,
+                                timestamp: new Date(),
+                                actionData: { optimizedOrder: data.optimizedOrder }
+                            }]);
+                        }
+
+                        addNotification('✅ AI分析完成，发现了优化建议', 'success');
+                    } else {
+                        addNotification('⚠️ AI分析失败，使用离线模式', 'warning');
+                    }
+
+                } catch (error) {
+                    console.error('AI分析失败:', error);
+                    addNotification('❌ AI分析遇到问题，请稍后重试', 'error');
+                } finally {
+                    setIsAIProcessing(false);
+                }
+            }, [tasks, userPreferences, completionHistory, productivityMetrics, aiService]);
+
+            // 自然语言处理
+            const handleNaturalLanguageInput = async (input) => {
+                if (!input.trim()) return;
+
+                setIsAIProcessing(true);
+                setChatHistory(prev => [...prev, {
+                    type: 'user',
+                    message: input,
+                    timestamp: new Date()
+                }]);
+
+                try {
+                    const result = await aiService.processNaturalLanguage(input, tasks);
+                    
+                    if (result.success && result.action) {
+                        await executeAIAction(result.action);
+                    }
+
+                    setChatHistory(prev => [...prev, {
+                        type: 'assistant',
+                        message: result.response || '已处理您的请求',
+                        timestamp: new Date(),
+                        suggestions: result.suggestions
+                    }]);
+
+                } catch (error) {
+                    console.error('自然语言处理失败:', error);
+                    setChatHistory(prev => [...prev, {
+                        type: 'error',
+                        message: '抱歉，我没有理解您的意思，请重新表达',
+                        timestamp: new Date()
+                    }]);
+                } finally {
+                    setIsAIProcessing(false);
+                    setChatInput('');
+                }
+            };
+
+            const executeAIAction = async (action) => {
+                switch (action.type) {
+                    case 'add_task':
+                        if (action.parameters?.taskText) {
+                            await addTaskWithAI(action.parameters);
+                        }
+                        break;
+                    case 'reorder_tasks':
+                        if (action.parameters?.optimizedOrder) {
+                            reorderTasks(action.parameters.optimizedOrder);
+                            addNotification('📋 任务顺序已优化', 'success');
+                        }
+                        break;
+                    case 'set_priority':
+                        if (action.parameters?.taskId && action.parameters?.priority) {
+                            updateTaskPriority(action.parameters.taskId, action.parameters.priority);
+                            addNotification('🎯 任务优先级已更新', 'success');
+                        }
+                        break;
+                    case 'get_analysis':
+                        await analyzeTasksWithAI();
+                        break;
+                }
+            };
+
+            // 任务管理功能
+            const addTaskWithAI = async (taskData) => {
+                try {
+                    const categoryResult = await aiService.categorizeTask(taskData.taskText || taskData);
+                    
+                    let category = {};
+                    if (categoryResult.success) {
+                        category = categoryResult.data;
+                    }
+
+                    const newTask = {
+                        id: generateTaskId(),
+                        text: taskData.taskText || taskData,
+                        completed: false,
+                        estimatedPomodoros: category.estimatedPomodoros || taskData.estimatedPomodoros || 1,
+                        completedPomodoros: 0,
+                        priority: category.priority || taskData.priority || 'medium',
+                        category: category.category || taskData.category || 'work',
+                        complexity: category.complexity || 'medium',
+                        timeOfDay: category.timeOfDay || 'anytime',
+                        tags: category.tags || [],
+                        deadline: taskData.deadline || null,
+                        createdAt: new Date().toISOString(),
+                        aiGenerated: true,
+                        energyRequired: category.energyRequired || 'medium',
+                        focusLevel: category.focusLevel || 'medium'
+                    };
+
+                    const updatedTasks = [...tasks, newTask];
+                    setTasks(updatedTasks);
+                    dataManager.save('tasks', updatedTasks);
+                    
+                    addNotification(`✅ 智能添加任务: ${newTask.text}`, 'success');
+
+                } catch (error) {
+                    console.error('AI任务添加失败:', error);
+                    addBasicTask(taskData.taskText || taskData);
+                }
+            };
+
+            const addBasicTask = () => {
+                if (newTaskText.trim() === '') {
+                    addNotification('请输入任务内容', 'warning');
+                    return;
+                }
+
+                const newTask = {
+                    id: generateTaskId(),
+                    text: newTaskText.trim(),
+                    completed: false,
+                    estimatedPomodoros: estimatedPomodoros,
+                    completedPomodoros: 0,
+                    priority: priority,
+                    category: 'work',
+                    createdAt: new Date().toISOString(),
+                    aiGenerated: false,
+                    startTime: startTime,
+                    endTime: endTime
+                };
+                
+                const updatedTasks = [...tasks, newTask];
+                setTasks(updatedTasks);
+                dataManager.save('tasks', updatedTasks);
+                setNewTaskText('');
+                setPriority('medium');
+                setEstimatedPomodoros(1);
+                setStartTime('');
+                setEndTime('');
+                
+                addNotification('📝 任务已添加', 'success');
+            };
+
+            const deleteTask = (taskId) => {
+                const updatedTasks = tasks.filter(task => task.id !== taskId);
+                setTasks(updatedTasks);
+                dataManager.save('tasks', updatedTasks);
+                
+                if (currentTask && currentTask.id === taskId) {
+                    setCurrentTask(null);
+                }
+                
+                addNotification('🗑️ 任务已删除', 'info');
+            };
+
+            const toggleTaskComplete = (taskId) => {
+                const updatedTasks = tasks.map(task => {
+                    if (task.id === taskId) {
+                        const completed = !task.completed;
+                        if (completed) {
+                            recordTaskCompletion(task);
+                        }
+                        return { ...task, completed };
+                    }
+                    return task;
+                });
+                setTasks(updatedTasks);
+                dataManager.save('tasks', updatedTasks);
+            };
+
+            const updateTaskEstimate = (taskId, estimate) => {
+                const updatedTasks = tasks.map(task =>
+                    task.id === taskId ? { ...task, estimatedPomodoros: Math.max(1, estimate) } : task
+                );
+                setTasks(updatedTasks);
+                dataManager.save('tasks', updatedTasks);
+            };
+
+            const updateTaskPriority = (taskId, priority) => {
+                const updatedTasks = tasks.map(task =>
+                    task.id === taskId ? { ...task, priority } : task
+                );
+                setTasks(updatedTasks);
+                dataManager.save('tasks', updatedTasks);
+            };
+
+            const reorderTasks = (newOrder) => {
+                const reorderedTasks = newOrder.map(id => tasks.find(task => task.id === id)).filter(Boolean);
+                setTasks(reorderedTasks);
+                dataManager.save('tasks', reorderedTasks);
+            };
+
+            const selectCurrentTask = (task) => {
+                setCurrentTask(task);
+                dataManager.save('currentTask', task);
+                setShowTaskManager(false);
+                addNotification(`🎯 选择任务: ${task.text}`, 'info');
+            };
+
+            // 数据记录和学习
+            const recordTaskCompletion = (task) => {
+                const completion = {
+                    taskId: task.id,
+                    taskText: task.text,
+                    category: task.category,
+                    priority: task.priority,
+                    estimatedPomodoros: task.estimatedPomodoros,
+                    actualPomodoros: task.completedPomodoros,
+                    completedAt: new Date().toISOString(),
+                    sessionType: sessionType
+                };
+
+                setCompletionHistory(prev => {
+                    const updated = [completion, ...prev.slice(0, 99)]; // 保留最近100个记录
+                    dataManager.save('completionHistory', updated);
+                    return updated;
+                });
+
+                updateProductivityMetrics(completion);
+                addNotification(`🎉 完成任务: ${task.text}`, 'success');
+            };
+
+            const updateProductivityMetrics = (completion) => {
+                setProductivityMetrics(prev => {
+                    const hour = new Date().getHours();
+                    const dayOfWeek = new Date().getDay();
+                    
+                    const updated = {
+                        ...prev,
+                        totalCompletedTasks: (prev.totalCompletedTasks || 0) + 1,
+                        totalPomodoros: (prev.totalPomodoros || 0) + completion.actualPomodoros,
+                        averageAccuracy: calculateAccuracy(completion),
+                        productiveHours: updateProductiveHours(prev.productiveHours || {}, hour),
+                        productiveDays: updateProductiveDays(prev.productiveDays || {}, dayOfWeek),
+                        categoryStats: updateCategoryStats(prev.categoryStats || {}, completion.category)
+                    };
+                    
+                    dataManager.save('productivityMetrics', updated);
+                    return updated;
+                });
+            };
+
+            const calculateAccuracy = (completion) => {
+                return completion.estimatedPomodoros > 0 ? 
+                    Math.min(100, (completion.actualPomodoros / completion.estimatedPomodoros) * 100) : 0;
+            };
+
+            const updateProductiveHours = (hours, hour) => {
+                return { ...hours, [hour]: (hours[hour] || 0) + 1 };
+            };
+
+            const updateProductiveDays = (days, day) => {
+                return { ...days, [day]: (days[day] || 0) + 1 };
+            };
+
+            const updateCategoryStats = (stats, category) => {
+                return { ...stats, [category]: (stats[category] || 0) + 1 };
+            };
+
+            // 计时器功能
+            const playNotificationSound = () => {
+                if (!userPreferences.sounds) return;
+                
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.2);
+            };
+
+            const sendNotification = (message) => {
+                if (!userPreferences.notifications) return;
+                
+                if (Notification.permission === 'granted') {
+                    new Notification('AI番茄时钟', {
+                        body: message,
+                        icon: '/favicon.ico'
+                    });
+                }
+                
+                addNotification(message, 'info');
+            };
+
+            const switchSession = () => {
+                if (sessionType === 'work') {
+                    const newCount = sessionCount + 1;
+                    setSessionCount(newCount);
+                    setTotalSessions(totalSessions + 1);
+                    
+                    if (currentTask) {
+                        const updatedTasks = tasks.map(task =>
+                            task.id === currentTask.id
+                                ? { ...task, completedPomodoros: task.completedPomodoros + 1 }
+                                : task
+                        );
+                        setTasks(updatedTasks);
+                        dataManager.save('tasks', updatedTasks);
+                    }
+
+                    dataManager.save('sessionStats', { sessionCount: newCount, totalSessions: totalSessions + 1 });
+                    
+                    if (newCount % 4 === 0) {
+                        setSessionType('longBreak');
+                        setTimeLeft(sessionTimes.longBreak);
+                        sendNotification('🎉 恭喜完成4个番茄！开始长休息吧！');
+                    } else {
+                        setSessionType('shortBreak');
+                        setTimeLeft(sessionTimes.shortBreak);
+                        sendNotification('✅ 番茄时间结束！开始短休息吧！');
+                    }
+                } else {
+                    setSessionType('work');
+                    setTimeLeft(sessionTimes.work);
+                    sendNotification('🚀 休息结束！开始新的番茄时间！');
+                }
+                setIsActive(false);
+            };
+
+            // 初始化
+            useEffect(() => {
+                const loadData = async () => {
+                    const savedTasks = dataManager.load('tasks', []);
+                    const savedCurrentTask = dataManager.load('currentTask', null);
+                    const savedSessionStats = dataManager.load('sessionStats', { sessionCount: 0, totalSessions: 0 });
+                    const savedPreferences = dataManager.load('userPreferences', userPreferences);
+                    const savedCompletionHistory = dataManager.load('completionHistory', []);
+                    const savedProductivityMetrics = dataManager.load('productivityMetrics', {});
+
+                    setTasks(savedTasks);
+                    setCurrentTask(savedCurrentTask);
+                    setSessionCount(savedSessionStats.sessionCount);
+                    setTotalSessions(savedSessionStats.totalSessions);
+                    setUserPreferences(savedPreferences);
+                    setCompletionHistory(savedCompletionHistory);
+                    setProductivityMetrics(savedProductivityMetrics);
+
+                    // 请求通知权限
+                    if (Notification.permission === 'default') {
+                        Notification.requestPermission();
+                    }
+
+                    // 初始AI分析
+                    if (savedTasks.length > 0) {
+                        setTimeout(() => {
+                            analyzeTasksWithAI();
+                        }, 2000);
+                    }
+                };
+
+                loadData();
+
+                // 设置数据同步监听
+                const handleDataSync = (event) => {
+                    const { key, data } = event.detail;
+                    if (key === 'tasks') {
+                        setTasks(data || []);
+                    }
+                };
+
+                window.addEventListener('dataSync', handleDataSync);
+                
+                return () => {
+                    window.removeEventListener('dataSync', handleDataSync);
+                };
+            }, []);
+
+            // 计时器效果
+            useEffect(() => {
+                if (isActive && timeLeft > 0) {
+                    intervalRef.current = setInterval(() => {
+                        setTimeLeft(timeLeft => timeLeft - 1);
+                    }, 1000);
+                } else if (timeLeft === 0) {
+                    playNotificationSound();
+                    switchSession();
+                }
+
+                return () => clearInterval(intervalRef.current);
+            }, [isActive, timeLeft]);
+
+            // 自动保存偏好设置
+            useEffect(() => {
+                dataManager.save('userPreferences', userPreferences);
+            }, [userPreferences]);
+
+            const toggleTimer = () => {
+                setIsActive(!isActive);
+            };
+
+            const resetTimer = () => {
+                setIsActive(false);
+                setTimeLeft(sessionTimes[sessionType]);
+            };
+
+            const changeSessionType = (type) => {
+                setSessionType(type);
+                setTimeLeft(sessionTimes[type]);
+                setIsActive(false);
+            };
+
+            // 协作功能
+            const enableCollaboration = () => {
+                setCollaborationEnabled(true);
+                dataManager.enableCollaboration({
+                    roomId: `room_${Date.now()}`,
+                    userId: dataManager.getUserId()
+                });
+                addNotification('🤝 协作模式已开启', 'success');
+            };
+
+            const shareSession = async () => {
+                try {
+                    const shareData = {
+                        tasks,
+                        currentTask,
+                        userPreferences,
+                        sessionStats: { sessionCount, totalSessions }
+                    };
+                    
+                    const shareInfo = dataManager.shareData('session', ['read', 'write']);
+                    
+                    // 复制分享链接到剪贴板
+                    await navigator.clipboard.writeText(shareInfo.shareUrl);
+                    addNotification('🔗 分享链接已复制到剪贴板', 'success');
+                    
+                } catch (error) {
+                    console.error('分享失败:', error);
+                    addNotification('❌ 分享失败，请重试', 'error');
+                }
+            };
+
+            // 数据导出导入
+            const exportData = () => {
+                const exportData = dataManager.exportData();
+                const dataStr = JSON.stringify(exportData, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(dataBlob);
+                link.download = `ai-pomodoro-data-${new Date().toISOString().split('T')[0]}.json`;
+                link.click();
+                
+                addNotification('📁 数据已导出', 'success');
+            };
+
+            const importData = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importData = JSON.parse(e.target.result);
+                        const results = dataManager.importData(importData, { merge: true });
+                        
+                        // 重新加载数据
+                        const newTasks = dataManager.load('tasks', []);
+                        setTasks(newTasks);
+                        
+                        addNotification('📥 数据导入成功', 'success');
+                        
+                    } catch (error) {
+                        console.error('导入失败:', error);
+                        addNotification('❌ 数据导入失败', 'error');
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            // 组件定义
+            const NotificationPanel = () => (
+                <div className="fixed top-4 right-4 z-50 space-y-2">
+                    {notifications.map(notification => (
+                        <div
+                            key={notification.id}
+                            className={`notification px-4 py-2 rounded-lg shadow-lg text-white text-sm max-w-sm ${
+                                notification.type === 'success' ? 'bg-green-500' :
+                                notification.type === 'error' ? 'bg-red-500' :
+                                notification.type === 'warning' ? 'bg-yellow-500' :
+                                'bg-blue-500'
+                            }`}
+                        >
+                            {notification.message}
+                        </div>
+                    ))}
+                </div>
+            );
+
+            const AIChat = () => (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-2xl w-full max-h-[80vh] flex flex-col">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold text-gray-800">🤖 AI智能助手</h2>
+                            <button
+                                onClick={() => setShowAIChat(false)}
+                                className="text-gray-500 hover:text-gray-700 text-2xl"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto mb-4 space-y-3 min-h-[300px]">
+                            {chatHistory.length === 0 ? (
+                                <div className="text-center text-gray-500 py-8">
+                                    <div className="text-4xl mb-4">🎯</div>
+                                    <p>我是您的AI番茄时钟助手，可以帮助您：</p>
+                                    <ul className="text-sm mt-2 space-y-1">
+                                        <li>• 智能添加和分类任务</li>
+                                        <li>• 优化任务执行顺序</li>
+                                        <li>• 分析工作模式和效率</li>
+                                        <li>• 提供个性化建议</li>
+                                        <li>• 预测任务时间和复杂度</li>
+                                    </ul>
+                                </div>
+                            ) : (
+                                chatHistory.map((msg, index) => (
+                                    <div key={index} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                        <div className={`max-w-[80%] p-3 rounded-lg ${
+                                            msg.type === 'user' 
+                                                ? 'bg-indigo-500 text-white' 
+                                                : msg.type === 'error'
+                                                ? 'bg-red-100 text-red-800'
+                                                : 'bg-gray-100 text-gray-800'
+                                        }`}>
+                                            <p>{msg.message}</p>
+                                            
+                                            {msg.actionData && (
+                                                <div className="mt-2">
+                                                    <button
+                                                        onClick={() => executeAIAction({ 
+                                                            type: 'reorder_tasks', 
+                                                            parameters: { optimizedOrder: msg.actionData.optimizedOrder }
+                                                        })}
+                                                        className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
+                                                    >
+                                                        应用优化顺序
+                                                    </button>
+                                                </div>
+                                            )}
+                                            
+                                            {msg.suggestions && (
+                                                <div className="mt-2 space-y-1">
+                                                    {msg.suggestions.map((suggestion, i) => (
+                                                        <div key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                                                            {suggestion}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            
+                                            <div className="text-xs opacity-70 mt-1">
+                                                {msg.timestamp.toLocaleTimeString('zh-CN')}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                            {isAIProcessing && (
+                                <div className="flex justify-start">
+                                    <div className="bg-gray-100 text-gray-800 p-3 rounded-lg">
+                                        <div className="ai-thinking">🤔 思考中...</div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex space-x-2">
+                            <Input
+                              key="chat-input"
+                              type="text"
+                              value={chatInput}
+                              onChange={(value) => {
+                                if (!isChatComposing) {
+                                  setChatInput(value);
+                                }
+                              }}
+                              onCompositionStart={() => setIsChatComposing(true)}
+                              onCompositionEnd={(e) => {
+                                setIsChatComposing(false);
+                                setChatInput(e.target.value);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !isChatComposing && !isAIProcessing && chatInput.trim()) {
+                                  e.preventDefault();
+                                  handleNaturalLanguageInput(chatInput);
+                                }
+                              }}
+                              placeholder="告诉我您需要什么帮助..."
+                              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              autoComplete="off"
+                              spellCheck={false}
+                              autoCorrect="off"
+                              autoCapitalize="off"
+                              autoFocus
+                            />
+                            <button
+                                onClick={() => handleNaturalLanguageInput(chatInput)}
+                                disabled={isAIProcessing || !chatInput.trim()}
+                                className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50"
+                            >
+                                发送
+                            </button>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 mt-4">
+                            <button
+                                onClick={() => setChatInput('帮我优化今天的任务安排')}
+                                className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm hover:bg-purple-200"
+                            >
+                                优化任务
+                            </button>
+                            <button
+                                onClick={() => setChatInput('分析我的工作效率模式')}
+                                className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm hover:bg-blue-200"
+                            >
+                                效率分析
+                            </button>
+                            <button
+                                onClick={() => setChatInput('推荐合适的休息安排')}
+                                className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm hover:bg-green-200"
+                            >
+                                休息建议
+                            </button>
+                            <button
+                                onClick={() => setChatInput('预测今天的工作负荷')}
+                                className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm hover:bg-orange-200"
+                            >
+                                负荷预测
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            // 时间块视图组件
+            const TimeBlocksView = () => (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold text-gray-800">⏰ 智能时间规划</h2>
+                            <button
+                                onClick={() => setShowTimeBlocks(false)}
+                                className="text-gray-500 hover:text-gray-700 text-2xl"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        {timeBlocks.length === 0 ? (
+                            <div className="text-center text-gray-500 py-8">
+                                <div className="text-4xl mb-4">📅</div>
+                                <p>AI正在为您生成时间规划...</p>
+                                <button
+                                    onClick={analyzeTasksWithAI}
+                                    className="mt-4 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600"
+                                >
+                                    生成时间规划
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                <div className="grid grid-cols-12 gap-2 text-sm font-medium text-gray-600 mb-4">
+                                    <div className="col-span-3">时间</div>
+                                    <div className="col-span-6">任务</div>
+                                    <div className="col-span-3">类型</div>
+                                </div>
+                                
+                                {timeBlocks.map((block, index) => (
+                                    <div
+                                        key={index}
+                                        className={`time-block p-3 grid grid-cols-12 gap-2 items-center ${
+                                            block.type === 'work' ? 'time-block-work' : 'time-block-break'
+                                        }`}
+                                    >
+                                        <div className="col-span-3 font-medium">
+                                            {block.startTime} - {block.endTime}
+                                        </div>
+                                        <div className="col-span-6">
+                                            {block.type === 'work' ? (
+                                                <div>
+                                                    <div className="font-medium">
+                                                        {tasks.find(t => t.id === block.taskId)?.text || '未知任务'}
+                                                    </div>
+                                                    <div className="text-xs opacity-80 mt-1">
+                                                        {block.reason}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="italic">{block.reason}</div>
+                                            )}
+                                        </div>
+                                        <div className="col-span-3">
+                                            {block.type === 'work' ? '🍅 工作' : '☕ 休息'}
+                                        </div>
+                                    </div>
+                                ))}
+                                
+                                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                                    <h3 className="font-semibold text-blue-800 mb-2">📊 时间规划总览</h3>
+                                    <div className="grid grid-cols-3 gap-4 text-sm">
+                                        <div>
+                                            <div className="font-medium text-blue-700">总工作时间</div>
+                                            <div className="text-blue-600">
+                                                {timeBlocks.filter(b => b.type === 'work').length * 25} 分钟
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="font-medium text-blue-700">休息时间</div>
+                                            <div className="text-blue-600">
+                                                {timeBlocks.filter(b => b.type === 'break').length * 5} 分钟
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="font-medium text-blue-700">预计完成时间</div>
+                                            <div className="text-blue-600">
+                                                {timeBlocks.length > 0 ? timeBlocks[timeBlocks.length - 1].endTime : '--:--'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+
+            // 任务管理器组件
+            const TaskManager = () => (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold text-gray-800">📋 智能任务管理</h2>
+                            <div className="flex space-x-2">
+                                <button
+                                    onClick={analyzeTasksWithAI}
+                                    disabled={isAIProcessing}
+                                    className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors disabled:opacity-50"
+                                >
+                                    {isAIProcessing ? '分析中...' : '🔄 AI分析'}
+                                </button>
+                                <button
+                                    onClick={() => setShowTaskManager(false)}
+                                    className="text-gray-500 hover:text-gray-700 text-2xl"
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* 添加新任务 */}
+                        <div className="mb-6">
+                          <div className="grid grid-cols-1 gap-4">
+                            <div className="flex space-x-2">
+                                <Input
+                                  key="task-input"
+                                  type="text"
+                                  value={newTaskText}
+                                  onChange={(value) => {
+                                    if (!isTaskComposing) {
+                                      setNewTaskText(value);
+                                    }
+                                  }}
+                                  onCompositionStart={() => setIsTaskComposing(true)}
+                                  onCompositionEnd={(e) => {
+                                    setIsTaskComposing(false);
+                                    setNewTaskText(e.target.value);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !isTaskComposing) {
+                                      e.preventDefault();
+                                      addBasicTask();
+                                    }
+                                  }}
+                                  placeholder="输入新任务..."
+                                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                  autoComplete="off"
+                                  spellCheck={false}
+                                  autoFocus
+                                />
+                                <button
+                                    onClick={addBasicTask}
+                                    className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
+                                    id="add-task-button"
+                                >
+                                    添加
+                                </button>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">优先级</label>
+                                <select
+                                  value={priority}
+                                  onChange={(e) => setPriority(e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                >
+                                  <option value="high">高</option>
+                                  <option value="medium">中</option>
+                                  <option value="low">低</option>
+                                </select>
+                              </div>
+                              
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">番茄钟数</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={estimatedPomodoros}
+                                  onChange={(e) => setEstimatedPomodoros(parseInt(e.target.value) || 1)}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">开始时间</label>
+                                <input
+                                  type="datetime-local"
+                                  value={startTime}
+                                  onChange={(e) => setStartTime(e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                />
+                              </div>
+                              
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">预计结束</label>
+                                <input
+                                  type="datetime-local"
+                                  value={endTime}
+                                  readOnly
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 任务列表 */}
+                        <div className="space-y-3">
+                            {tasks.length === 0 ? (
+                                <div className="text-center text-gray-500 py-8">
+                                    <div className="text-4xl mb-4">📝</div>
+                                    <p>还没有任务，添加一个开始吧！</p>
+                                </div>
+                            ) : (
+                                tasks.map(task => (
+                                    <div
+                                        key={task.id}
+                                        className={`p-4 border rounded-xl ${task.completed ? 'bg-gray-50 border-gray-200' : 'bg-white border-gray-300'} ${
+                                            task.priority === 'high' ? 'border-l-4 border-l-red-500' :
+                                            task.priority === 'medium' ? 'border-l-4 border-l-yellow-500' :
+                                            'border-l-4 border-l-green-500'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center space-x-3 flex-1">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={task.completed}
+                                                    onChange={() => toggleTaskComplete(task.id)}
+                                                    className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+                                                />
+                                                <div className="flex-1">
+                                                    <div className={`font-medium ${task.completed ? 'line-through text-gray-500' : 'text-gray-800'}`}>
+                                                        {task.text}
+                                                    </div>
+                                                    <div className="flex items-center space-x-2 mt-1">
+                                                        <span className={`px-2 py-1 text-xs rounded-full ${
+                                                            task.priority === 'high' ? 'bg-red-100 text-red-700' :
+                                                            task.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                                            'bg-green-100 text-green-700'
+                                                        }`}>
+                                                            {task.priority === 'high' ? '🔴 高优先级' : task.priority === 'medium' ? '🟡 中优先级' : '🟢 低优先级'}
+                                                        </span>
+                                                        {task.aiGenerated && (
+                                                            <span className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-full">
+                                                                🤖 AI生成
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <button
+                                                    onClick={() => selectCurrentTask(task)}
+                                                    className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+                                                >
+                                                    选择
+                                                </button>
+                                                <button
+                                                    onClick={() => deleteTask(task.id)}
+                                                    className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors"
+                                                >
+                                                    删除
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
+                                            <div className="flex items-center space-x-2">
+                                                <span>预计:</span>
+                                                <input
+                                                    type="number"
+                                                    value={task.estimatedPomodoros}
+                                                    onChange={(e) => updateTaskEstimate(task.id, parseInt(e.target.value) || 1)}
+                                                    min="1"
+                                                    className="w-16 px-2 py-1 border border-gray-300 rounded text-center"
+                                                />
+                                                <span>🍅</span>
+                                            </div>
+                                            <div>
+                                                已完成: {task.completedPomodoros} / {task.estimatedPomodoros} 🍅
+                                            </div>
+                                        </div>
+                                        
+                                        {/* 进度条 */}
+                                        <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
+                                            <div
+                                                className={`h-2 rounded-full transition-all ${
+                                                    task.priority === 'high' ? 'bg-red-500' :
+                                                    task.priority === 'medium' ? 'bg-yellow-500' :
+                                                    'bg-green-500'
+                                                }`}
+                                                style={{ width: `${Math.min(100, (task.completedPomodoros / task.estimatedPomodoros) * 100)}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+
+            // 数据分析组件
+            const Analytics = () => (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-2xl font-bold text-gray-800">📊 效率分析</h2>
+                            <button
+                                onClick={() => setShowAnalytics(false)}
+                                className="text-gray-500 hover:text-gray-700 text-2xl"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        {/* 统计卡片 */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-6 text-white">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="text-2xl font-bold">{productivityMetrics.totalCompletedTasks || 0}</div>
+                                        <div className="text-blue-100">完成任务</div>
+                                    </div>
+                                    <div className="text-3xl opacity-80">✅</div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-6 text-white">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="text-2xl font-bold">{productivityMetrics.totalPomodoros || 0}</div>
+                                        <div className="text-green-100">总番茄数</div>
+                                    </div>
+                                    <div className="text-3xl opacity-80">🍅</div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-6 text-white">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <div className="text-2xl font-bold">{Math.round(productivityMetrics.averageAccuracy || 0)}%</div>
+                                        <div className="text-purple-100">时间预估准确率</div>
+                                    </div>
+                                    <div className="text-3xl opacity-80">🎯</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 最近完成的任务 */}
+                        <div className="mb-8">
+                            <h3 className="text-lg font-semibold text-gray-800 mb-4">📈 最近完成</h3>
+                            <div className="space-y-3">
+                                {completionHistory.slice(0, 5).map((completion, index) => (
+                                    <div key={index} className="p-3 bg-gray-50 rounded-lg">
+                                        <div className="flex justify-between items-center">
+                                            <div className="font-medium text-gray-800">{completion.taskText}</div>
+                                            <div className="text-sm text-gray-600">
+                                                {new Date(completion.completedAt).toLocaleDateString('zh-CN')}
+                                            </div>
+                                        </div>
+                                        <div className="text-sm text-gray-600 mt-1">
+                                            用时: {completion.actualPomodoros} 🍅 |
+                                            预估: {completion.estimatedPomodoros} 🍅 |
+                                            分类: {completion.category}
+                                        </div>
+                                    </div>
+                                ))}
+                                {completionHistory.length === 0 && (
+                                    <div className="text-center text-gray-500 py-8">
+                                        <div className="text-4xl mb-4">📊</div>
+                                        <p>还没有完成的任务数据</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* 分类统计 */}
+                        {Object.keys(productivityMetrics.categoryStats || {}).length > 0 && (
+                            <div className="mb-8">
+                                <h3 className="text-lg font-semibold text-gray-800 mb-4">📋 任务分类统计</h3>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    {Object.entries(productivityMetrics.categoryStats || {}).map(([category, count]) => (
+                                        <div key={category} className="p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg">
+                                            <div className="text-center">
+                                                <div className="text-2xl font-bold text-gray-800">{count}</div>
+                                                <div className="text-sm text-gray-600 capitalize">{category}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 导出按钮 */}
+                        <div className="flex justify-center space-x-4">
+                            <button
+                                onClick={exportData}
+                                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                            >
+                                📁 导出数据
+                            </button>
+                            <label className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors cursor-pointer">
+                                📥 导入数据
+                                <input
+                                    type="file"
+                                    accept=".json"
+                                    onChange={importData}
+                                    className="hidden"
+                                />
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <NotificationPanel />
+                    
+                    <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full slide-up">
+                        {/* 标题和控制按钮 */}
+                        <div className="text-center mb-8">
+                            <div className="flex justify-between items-center mb-2">
+                                <div className="flex space-x-1">
+                                    <button
+                                        onClick={() => setShowAIChat(true)}
+                                        className="p-2 text-purple-600 hover:text-purple-800 hover:bg-purple-100 rounded-full transition-colors"
+                                        title="AI助手"
+                                    >
+                                        🤖
+                                    </button>
+                                    <button
+                                        onClick={() => setShowTimeBlocks(true)}
+                                        className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-full transition-colors"
+                                        title="时间规划"
+                                    >
+                                        ⏰
+                                    </button>
+                                </div>
+                                <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                                    🍅 AI番茄时钟
+                                </h1>
+                                <div className="flex space-x-1">
+                                    <button
+                                        onClick={() => setShowTaskManager(true)}
+                                        className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 rounded-full transition-colors"
+                                        title="任务管理"
+                                    >
+                                        📋
+                                    </button>
+                                    <button
+                                        onClick={() => setShowAnalytics(true)}
+                                        className="p-2 text-green-600 hover:text-green-800 hover:bg-green-100 rounded-full transition-colors"
+                                        title="数据分析"
+                                    >
+                                        📊
+                                    </button>
+                                </div>
+                            </div>
+                            <p className="text-gray-600">AI驱动的智能专注工作法</p>
+                        </div>
+
+                        {/* 当前任务显示 */}
+                        {currentTask && (
+                            <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+                                <div className="text-sm text-blue-600 mb-1 flex items-center justify-between">
+                                    <span>当前任务</span>
+                                    <span className={`px-2 py-1 text-xs rounded-full ${
+                                        currentTask.priority === 'high' ? 'bg-red-100 text-red-700' :
+                                        currentTask.priority === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                                        'bg-green-100 text-green-700'
+                                    }`}>
+                                        {currentTask.priority === 'high' ? '🔴 高' : 
+                                         currentTask.priority === 'medium' ? '🟡 中' : 
+                                         '🟢 低'}
+                                    </span>
+                                </div>
+                                <div className="font-medium text-blue-800">{currentTask.text}</div>
+                                <div className="text-sm text-blue-600 mt-1 flex items-center justify-between">
+                                    <span>进度: {currentTask.completedPomodoros} / {currentTask.estimatedPomodoros} 🍅</span>
+                                    {currentTask.aiGenerated && (
+                                        <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                                            🤖 AI推荐
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* AI建议快速显示 */}
+                        {aiSuggestions.length > 0 && (
+                            <div className="mb-6 p-3 bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl border border-purple-200">
+                                <div className="text-sm font-medium text-purple-800 mb-1 flex items-center justify-between">
+                                    <span>✨ AI建议</span>
+                                    <span className="text-xs">{aiSuggestions.length} 项</span>
+                                </div>
+                                <div className="text-sm text-purple-700">
+                                    {aiSuggestions[0].message}
+                                </div>
+                                <button
+                                    onClick={() => setShowTaskManager(true)}
+                                    className="text-xs text-purple-600 hover:text-purple-800 mt-1"
+                                >
+                                    查看全部建议 →
+                                </button>
+                            </div>
+                        )}
+
+                        {/* 会话类型选择 */}
+                        <div className="flex justify-center mb-6">
+                            <div className="bg-gray-100 rounded-full p-1 flex">
+                                {Object.keys(sessionTimes).map((type) => (
+                                    <button
+                                        key={type}
+                                        onClick={() => changeSessionType(type)}
+                                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                                            sessionType === type
+                                                ? `bg-gradient-to-r ${sessionColors[type]} text-white shadow-lg transform scale-105`
+                                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        {sessionNames[type]}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 圆形进度条和时间显示 */}
+                        <div className="relative flex items-center justify-center mb-8">
+                            <div className="relative w-64 h-64">
+                                <div className="absolute inset-0 rounded-full bg-gray-200"></div>
+                                
+                                <div 
+                                    className={`absolute inset-0 rounded-full bg-gradient-to-r ${sessionColors[sessionType]}`}
+                                    style={{
+                                        background: `conic-gradient(from 0deg, transparent ${360 - (getProgress() * 3.6)}deg, currentColor ${360 - (getProgress() * 3.6)}deg)`
+                                    }}
+                                ></div>
+                                
+                                <div className="absolute inset-4 bg-white rounded-full flex items-center justify-center shadow-inner">
+                                    <div className="text-center">
+                                        <div className="text-4xl font-bold text-gray-800 mb-2">
+                                            {formatTime(timeLeft)}
+                                        </div>
+                                        <div className="text-lg font-medium text-gray-600">
+                                            {sessionNames[sessionType]}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {isActive && (
+                                    <div className={`absolute inset-0 rounded-full bg-gradient-to-r ${sessionColors[sessionType]} opacity-20 pulse-ring`}></div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* 控制按钮 */}
+                        <div className="flex justify-center space-x-4 mb-6">
+                            <button
+                                onClick={toggleTimer}
+                                className={`px-8 py-3 rounded-full font-semibold text-white shadow-lg transform transition-all hover:scale-105 active:scale-95 ${
+                                    isActive 
+                                        ? 'bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700'
+                                        : `bg-gradient-to-r ${sessionColors[sessionType]} hover:shadow-xl`
+                                }`}
+                            >
+                                {isActive ? '⏸️ 暂停' : '▶️ 开始'}
+                            </button>
+                            
+                            <button
+                                onClick={resetTimer}
+                                className="px-6 py-3 rounded-full font-semibold text-gray-600 bg-gray-200 hover:bg-gray-300 shadow-lg transform transition-all hover:scale-105 active:scale-95"
+                            >
+                                🔄 重置
+                            </button>
+                        </div>
+
+                        {/* 统计信息 */}
+                        <div className="bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl p-4 mb-4">
+                            <div className="flex justify-between items-center">
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-gray-800">{sessionCount}</div>
+                                    <div className="text-sm text-gray-600">完成轮次</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-gray-800">{totalSessions}</div>
+                                    <div className="text-sm text-gray-600">总番茄数</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-gray-800">{Math.floor(sessionCount / 4)}</div>
+                                    <div className="text-sm text-gray-600">长休息</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 功能快捷按钮 */}
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                            <button
+                                onClick={analyzeTasksWithAI}
+                                disabled={isAIProcessing}
+                                className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors disabled:opacity-50 text-sm"
+                            >
+                                {isAIProcessing ? '🤔 分析中...' : '🔄 AI优化'}
+                            </button>
+                            <button
+                                onClick={shareSession}
+                                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
+                            >
+                                🤝 分享会话
+                            </button>
+                        </div>
+
+                        {/* 底部状态指示 */}
+                        <div className="text-center text-sm text-gray-500">
+                            <div className="flex items-center justify-center space-x-4">
+                                <div className="flex items-center space-x-1">
+                                    <span>🤖</span>
+                                    <div className={`w-2 h-2 rounded-full ${aiService.isOnline ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                    <span>AI {aiService.isOnline ? '在线' : '离线'}</span>
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                    <span>💾</span>
+                                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                    <span>自动保存</span>
+                                </div>
+                                {collaborationEnabled && (
+                                    <div className="flex items-center space-x-1">
+                                        <span>🤝</span>
+                                        <div className="w-2 h-2 rounded-full bg-green-500 collaboration-indicator"></div>
+                                        <span>协作中</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 弹窗组件 */}
+                    {showAIChat && <AIChat />}
+                    {showTimeBlocks && <TimeBlocksView />}
+                    {showTaskManager && <TaskManager />}
+                    {showAnalytics && <Analytics />}
+                </div>
+            );
+        };
+
+        ReactDOM.render(<ComprehensiveAIPomodoro />, document.getElementById('root'));
+    </script>
+</body>
 </html>
